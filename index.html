@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Egg Spawner Multiplayer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #050010; color: #fff; user-select: none; display: flex; }
+
+  .version-badge { position: fixed; top: 16px; left: 76px; background: rgba(0,0,0,0.55); padding: 4px 10px; border-radius: 8px; font-size: 0.75em; color: #8b8fb8; z-index: 1000; border: 1px solid #2a2050; font-family: monospace; pointer-events: none; }
+
+  .left-rail { width: 64px; min-width: 64px; background: rgba(10,5,30,0.95); border-right: 1px solid #2a2050; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 60px 0 16px; z-index: 100; }
+  .rail-btn { width: 48px; height: 48px; border-radius: 12px; border: 2px solid transparent; background: rgba(255,255,255,0.04); color: #8b8fb8; cursor: pointer; font-size: 1.4em; display: flex; align-items: center; justify-content: center; position: relative; transition: 0.15s; }
+  .rail-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+  .rail-btn.active { background: rgba(139,92,246,0.2); border-color: #8b5cf6; color: #fff; }
+  .rail-btn .badge { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; background: #fbbf24; color: #000; border-radius: 10px; font-size: 0.55em; font-weight: 900; display: flex; align-items: center; justify-content: center; }
+
+  .world-container { position: fixed; inset: 0; z-index: -2; overflow: hidden; transition: background 1s ease; }
+  .world-1 { background: linear-gradient(to bottom, #2e4a2b 0%, #1a2c18 100%); }
+  .world-2 { background: linear-gradient(to bottom, #6d9bb8 0%, #b0d4e3 100%); }
+  .trees { position: absolute; bottom: 0; left: 0; width: 100%; height: 100%; background-image: radial-gradient(ellipse at 20% 100%, #0e1a0e 0%, transparent 50%), radial-gradient(ellipse at 70% 100%, #0e1a0e 0%, transparent 50%); opacity: 0.8; pointer-events: none; }
+  .snow { position: absolute; inset: 0; pointer-events: none; background-image: radial-gradient(circle, #fff 1px, transparent 1px); background-size: 40px 40px; animation: snowFall 6s linear infinite; opacity: 0.6; }
+  @keyframes snowFall { 0% { background-position: 0 0; } 100% { background-position: 20px 40px; } }
+
+  .game-area { position: absolute; top: 0; left: 64px; right: 0; bottom: 0; display: flex; flex-direction: column; }
+  
+  .hud { position: absolute; top: 16px; left: 16px; right: 16px; display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none; z-index: 50; }
+  .hud-left { display: flex; flex-direction: column; gap: 10px; pointer-events: auto; }
+  .hud-card { background: rgba(10,5,30,0.85); border: 1px solid #2a2050; border-radius: 12px; padding: 10px 16px; backdrop-filter: blur(6px); }
+  .hud-card .label { font-size: 0.7em; letter-spacing: 2px; color: #8b8fb8; text-transform: uppercase; margin-bottom: 2px; }
+  .hud-card .value { font-size: 1.3em; font-weight: 900; font-variant-numeric: tabular-nums; }
+  .hud-card.coins .value { color: #fbbf24; text-shadow: 0 0 16px rgba(251,191,36,0.5); }
+  .hud-card.income .value { color: #4ade80; text-shadow: 0 0 16px rgba(74,222,128,0.5); }
+  .hud-card.world { pointer-events: auto; cursor: pointer; transition: 0.15s; position: absolute; top: 16px; right: 16px; }
+  .hud-card.world:hover { background: rgba(139,92,246,0.3); border-color: #8b5cf6; }
+  .hud-card.phase { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); text-align: center; background: rgba(10,5,30,0.85); }
+  .hud-card.phase .value { font-size: 1.4em; }
+  .hud-card.phase.day .value { color: #fde68a; }
+  .hud-card.phase.night .value { color: #c4c8ff; }
+
+  .boosts-container { position: fixed; top: 210px; left: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 10001; pointer-events: none; }
+  .boost-badge { display: flex; align-items: center; gap: 6px; background: rgba(20,15,50,0.98); border: 2px solid #22c55e; padding: 10px 16px; border-radius: 12px; font-weight: 900; font-size: 0.9em; color: #4ade80; box-shadow: 0 6px 25px rgba(0,0,0,0.9), 0 0 20px rgba(34,197,94,0.7); animation: slideIn 0.3s ease-out; }
+  .boost-badge.orange { border-color: #f97316; color: #fdba74; box-shadow: 0 6px 25px rgba(0,0,0,0.9), 0 0 20px rgba(249,115,22,0.7); }
+  .boost-badge.blue { border-color: #06b6d4; color: #67e8f9; box-shadow: 0 6px 25px rgba(0,0,0,0.9), 0 0 20px rgba(6,182,212,0.7); }
+  @keyframes slideIn { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
+
+  .player-wrapper { position: absolute; width: 40px; height: 60px; z-index: 10; pointer-events: none; }
+  .player-body-wrap { width: 100%; height: 100%; transition: transform 0.1s; }
+  .player-head { width: 24px; height: 24px; border-radius: 50%; background: #fca5a5; margin: 0 auto; border: 2px solid #000; }
+  .player-body { width: 28px; height: 30px; background: #3b82f6; margin: -2px auto 0; border: 2px solid #000; border-radius: 4px; }
+  .player-legs { width: 24px; height: 12px; margin: 0 auto; display: flex; justify-content: space-between; }
+  .player-legs::before, .player-legs::after { content: ""; width: 8px; height: 12px; background: #1e3a8a; border: 2px solid #000; border-radius: 2px; }
+  .player-name { position: absolute; top: -20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); padding: 2px 6px; border-radius: 4px; font-size: 0.7em; white-space: nowrap; }
+
+  .world-egg { position: absolute; width: 60px; height: 80px; z-index: 5; cursor: pointer; display: flex; align-items: center; justify-content: center; filter: drop-shadow(0 10px 15px rgba(0,0,0,0.5)); transition: filter 0.2s; transform-origin: center center; }
+  .world-egg.hidden { display: none; }
+  .world-egg:hover { filter: drop-shadow(0 15px 25px rgba(0,0,0,0.7)) brightness(1.15); }
+
+  .world-egg-shape { width: 100%; height: 100%; border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 2em; }
+  .world-egg.legendary .world-egg-shape { background: linear-gradient(135deg, #ffb347, #ff8c00); box-shadow: 0 0 20px rgba(255,140,0,0.8); border: 2px solid #ffb347; }
+  .world-egg.legendary .world-egg-shape::after { content: "★"; color: #fff; }
+  .world-egg.secret .world-egg-shape { background: radial-gradient(circle at 35% 30%, #1a1a2e, #000); box-shadow: 0 0 20px rgba(180,140,255,0.8); border: 2px solid #b48cff; }
+  .world-egg.secret .world-egg-shape::after { content: "?"; color: #b48cff; }
+  .world-egg.eternal .world-egg-shape { background: linear-gradient(135deg, #ffb3d9, #e0b3ff); box-shadow: 0 0 20px rgba(255,158,224,0.8); border: 2px solid #ff9ee0; }
+  .world-egg.eternal .world-egg-shape::after { content: "⚙"; color: #fff; }
+  .world-egg.divine .world-egg-shape { background: linear-gradient(135deg, #fff8b0, #fbbf24); box-shadow: 0 0 20px rgba(253,230,138,0.8); border: 2px solid #fde68a; }
+  .world-egg.divine .world-egg-shape::after { content: "✦"; color: #fff; }
+
+  .interact-hint { position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: #fff; padding: 4px 8px; border-radius: 6px; font-size: 0.7em; font-weight: bold; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 0.2s; }
+  .world-egg.near .interact-hint { opacity: 1; }
+
+  .side-panel { position: fixed; top: 0; left: 64px; bottom: 0; width: 380px; max-width: calc(100vw - 64px); background: rgba(10,5,30,0.97); border-right: 1px solid #2a2050; z-index: 300; display: flex; flex-direction: column; transform: translateX(calc(-100% - 64px)); transition: transform 0.3s ease; box-shadow: 10px 0 40px rgba(0,0,0,0.6); }
+  .side-panel.open { transform: translateX(0); }
+  .side-panel-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 18px; border-bottom: 1px solid #2a2050; }
+  .side-panel-header h2 { font-size: 1.2em; letter-spacing: 2px; color: #c4b5fd; }
+  .side-panel-close { width: 36px; height: 36px; border-radius: 10px; border: none; background: #3a3a5a; color: #fff; cursor: pointer; }
+  .side-panel-body { flex: 1; overflow-y: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+
+  .egg-card, .pet-card { background: rgba(20,15,50,0.7); border: 2px solid #2a2050; border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .pet-card { flex-direction: row; align-items: center; }
+  .egg-card.legendary, .pet-card.legendary { border-color: #ffb347; }
+  .egg-card.secret, .pet-card.secret { border-color: #b48cff; }
+  .egg-card.eternal, .pet-card.eternal { border-color: #ff9ee0; }
+  .egg-card.divine, .pet-card.divine { border-color: #fde68a; }
+  .egg-card-top { display: flex; align-items: center; gap: 12px; }
+  .egg-card-preview { width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; }
+  .egg-card-preview .world-egg-shape { width: 100%; height: 100%; font-size: 1.6em; }
+  .egg-card-info { flex: 1; }
+  .egg-card-name, .pet-card-name { font-weight: 900; font-size: 1em; }
+  .egg-card.legendary .egg-card-name, .pet-card.legendary .pet-card-name { color: #ffb347; }
+  .egg-card.secret .egg-card-name, .pet-card.secret .pet-card-name { color: #b48cff; }
+  .egg-card.eternal .egg-card-name, .pet-card.eternal .pet-card-name { color: #ff9ee0; }
+  .egg-card.divine .egg-card-name, .pet-card.divine .pet-card-name { color: #fde68a; }
+  .pet-card-icon { font-size: 2.4em; width: 48px; text-align: center; }
+  .pet-card-info { flex: 1; }
+  .pet-card-income { font-size: 0.9em; color: #4ade80; font-weight: 900; margin-top: 2px; }
+  .pet-card-price { font-size: 0.78em; color: #fbbf24; margin-top: 2px; font-weight: 900; }
+  .egg-card-btn, .pet-card-btn { width: 100%; padding: 10px; border: none; border-radius: 10px; cursor: pointer; font-weight: 900; font-size: 0.9em; color: #fff; transition: 0.15s; }
+  .egg-card-btn { background: #8b5cf6; }
+  .pet-card-btn { background: #22c55e; width: auto; padding: 8px 12px; font-size: 0.8em; }
+  .pet-card-btn.sell { background: linear-gradient(135deg, #f59e0b, #d97706); }
+  .egg-card-btn:disabled, .pet-card-btn.disabled { background: #3a3a4a; color: #666; cursor: not-allowed; }
+  .pet-card-actions { display: flex; flex-direction: column; gap: 6px; }
+
+  .egg-card-progress { height: 8px; border-radius: 6px; background: #000; overflow: hidden; }
+  .egg-card-progress-bar { height: 100%; width: 0%; background: #22c55e; transition: width 0.2s; }
+  .egg-card-progress-text { font-size: 0.75em; color: #8b8fb8; text-align: center; }
+  .empty-state { text-align: center; color: #4a4a6a; padding: 60px 20px; }
+  .empty-state .big { font-size: 3.5em; margin-bottom: 14px; opacity: 0.5; }
+  .income-summary { display: flex; justify-content: center; padding: 12px; border-radius: 12px; background: rgba(74,222,128,0.1); border: 2px solid #4ade80; font-weight: 900; color: #4ade80; margin-bottom: 12px; }
+  .slots-summary { text-align: center; color: #8b8fb8; font-size: 0.9em; margin-bottom: 12px; }
+  .slots-summary b { color: #c4b5fd; }
+
+  .upgrade-box { background: rgba(139,92,246,0.1); border: 2px solid #8b5cf6; border-radius: 14px; padding: 14px; margin-bottom: 12px; text-align: center; }
+  .upgrade-box.maxed { background: rgba(251,191,36,0.1); border-color: #fbbf24; }
+  .upgrade-title { font-size: 0.85em; letter-spacing: 1.5px; color: #c4b5fd; font-weight: 900; margin-bottom: 6px; }
+  .upgrade-box.maxed .upgrade-title { color: #fbbf24; }
+  .upgrade-info { font-size: 0.9em; color: #8b8fb8; margin-bottom: 10px; }
+  .upgrade-info b { color: #22d3ee; }
+  .upgrade-btn { width: 100%; padding: 10px; border: none; border-radius: 10px; cursor: pointer; font-weight: 900; font-size: 0.9em; background: linear-gradient(135deg, #22c55e, #16a34a); color: #fff; transition: 0.15s; }
+  .upgrade-btn:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.1); }
+  .upgrade-btn:disabled { background: #3a3a4a; color: #666; cursor: not-allowed; }
+
+  .sell-all-btn { width: 100%; padding: 12px; border: none; border-radius: 12px; background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; font-weight: 900; font-size: 1em; cursor: pointer; margin-bottom: 12px; box-shadow: 0 4px 15px rgba(245, 158, 11, 0.4); transition: 0.15s; }
+  .sell-all-btn:hover { transform: translateY(-2px); filter: brightness(1.1); }
+
+  .world-select-card { background: rgba(20,15,50,0.8); border: 2px solid #2a2050; border-radius: 14px; padding: 16px; cursor: pointer; transition: 0.2s; margin-bottom: 10px; display: flex; align-items: center; gap: 12px; position: relative; overflow: hidden; }
+  .world-select-card:hover { border-color: #8b5cf6; transform: translateY(-2px); }
+  .world-select-card.active { border-color: #22c55e; box-shadow: 0 0 15px rgba(34,197,94,0.3); }
+  .world-select-card.locked { opacity: 0.5; cursor: not-allowed; }
+  .world-select-card .preview { font-size: 2.5em; }
+  .world-select-card .info { flex: 1; }
+  .world-select-card .title { font-weight: 900; font-size: 1.1em; margin-bottom: 4px; }
+  .world-select-card .desc { font-size: 0.8em; color: #8b8fb8; }
+  .world-select-card .bonus { font-size: 0.8em; color: #4ade80; font-weight: bold; margin-top: 4px; }
+
+  .toast { position: fixed; top: 100px; left: 50%; transform: translateX(-50%) translateY(-30px); background: rgba(20,15,50,0.95); border: 1px solid #8b5cf6; padding: 14px 28px; border-radius: 12px; font-weight: 900; opacity: 0; transition: all 0.4s ease; pointer-events: none; z-index: 500; box-shadow: 0 8px 32px rgba(139,92,246,0.5); }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  .float-num { position: fixed; pointer-events: none; font-weight: 900; font-size: 2em; animation: floatUp 1.2s ease-out forwards; z-index: 600; }
+  @keyframes floatUp { 0% { opacity: 1; transform: translateY(0) scale(1); } 100% { opacity: 0; transform: translateY(-140px) scale(1.6); } }
+
+  .loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 16px; background: #000; z-index: 9999; transition: opacity 0.5s; }
+  .loading.hide { opacity: 0; pointer-events: none; }
+  .spinner { width: 50px; height: 50px; border: 4px solid #333; border-top-color: #8b5cf6; border-radius: 50%; animation: spinLoad 1s linear infinite; }
+  @keyframes spinLoad { to { transform: rotate(360deg); } }
+
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; opacity: 0; pointer-events: none; transition: opacity 0.3s; backdrop-filter: blur(4px); }
+  .modal-overlay.show { opacity: 1; pointer-events: auto; }
+  .modal-content { background: rgba(20,15,50,0.95); border: 2px solid #8b5cf6; padding: 24px; border-radius: 16px; text-align: center; max-width: 320px; width: 100%; transform: translateY(20px); transition: transform 0.3s; box-shadow: 0 10px 40px rgba(0,0,0,0.8); }
+  .modal-overlay.show .modal-content { transform: translateY(0); }
+  .modal-title { font-size: 1.2em; font-weight: 900; margin-bottom: 12px; color: #fff; }
+  .modal-text { font-size: 0.95em; color: #8b8fb8; margin-bottom: 20px; line-height: 1.5; }
+  .modal-text b { color: #fbbf24; }
+  .modal-buttons { display: flex; gap: 10px; }
+  .modal-btn { flex: 1; padding: 10px; border: none; border-radius: 10px; font-weight: 900; cursor: pointer; transition: 0.15s; color: #fff; }
+  .modal-btn.cancel { background: #3a3a5a; }
+  .modal-btn.confirm { background: #f59e0b; }
+
+  .notif-container { position: fixed; top: 80px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; z-index: 400; pointer-events: none; width: 100%; max-width: 450px; align-items: center; }
+  .notif { background: rgba(20,15,50,0.95); border: 2px solid #fbbf24; border-radius: 12px; padding: 12px 24px; color: #fff; font-size: 0.95em; font-weight: bold; box-shadow: 0 4px 20px rgba(251,191,36,0.5); animation: dropIn 0.4s ease-out; display: flex; align-items: flex-start; gap: 8px; text-align: center; width: fit-content; max-width: 100%; }
+  .notif.legendary { border-color: #ffb347; color: #ffdcb0; box-shadow: 0 4px 20px rgba(255,140,0,0.6); }
+  .notif.secret { border-color: #b48cff; color: #d4bfff; box-shadow: 0 4px 20px rgba(180,140,255,0.6); }
+  .notif.eternal { border-color: #ff9ee0; color: #ffd6f0; box-shadow: 0 4px 20px rgba(255,158,224,0.6); }
+  .notif.divine { border-color: #fde68a; color: #fff8c4; box-shadow: 0 4px 20px rgba(253,230,138,0.8); text-shadow: 0 0 10px rgba(253,230,138,0.8); }
+  @keyframes dropIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+  .notif-icon { font-size: 1.2em; }
+  .notif-text { flex: 1; }
+  .notif-text b { color: inherit; }
+
+  .timer-bar { position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #fbbf24, #f97316); z-index: 70; transition: width 0.3s linear; box-shadow: 0 0 12px rgba(251,191,36,0.7); }
+  .timer-bar.night { background: linear-gradient(90deg, #7c8bff, #4c1d95); box-shadow: 0 0 12px rgba(124,139,255,0.7); }
+</style>
+</head>
+<body>
+
+<div class="version-badge">alpha: 2.2.1</div>
+
+<div class="world-container world-1" id="worldBg">
+  <div class="trees" id="bgTrees"></div>
+  <div class="snow" id="bgSnow" style="display:none;"></div>
+</div>
+
+<div class="left-rail">
+  <button class="rail-btn active" data-view="home" title="Главная">🏠</button>
+  <button class="rail-btn" data-view="worlds" title="Миры">🌍</button>
+  <button class="rail-btn" data-view="eggs" title="Яйца">🥚<span class="badge" id="eggsBadge" style="display:none;">0</span></button>
+  <button class="rail-btn" data-view="inventory" title="Инвентарь">🎒<span class="badge" id="invBadge" style="display:none;">0</span></button>
+  <button class="rail-btn" data-view="aviary" title="Вольер">🏡</button>
+</div>
+
+<div class="game-area">
+  <div class="hud">
+    <div class="hud-left">
+      <div class="hud-card coins">
+        <div class="label">Монеты</div>
+        <div class="value" id="coinsHud">0</div>
+      </div>
+      <div class="hud-card income">
+        <div class="label">Доход/сек</div>
+        <div class="value" id="incomeHud">0</div>
+      </div>
+    </div>
+    
+    <div class="hud-card world" id="worldBtn">
+      <div class="label">Текущий мир</div>
+      <div class="value" id="worldLabel">🌳 Лес</div>
+    </div>
+
+    <div class="hud-card phase" id="phaseHud">
+      <div class="label" id="phaseLabel">Ночь</div>
+      <div class="value" id="timerHud">0:10</div>
+    </div>
+  </div>
+  <div class="timer-bar" id="timerBar" style="width:100%"></div>
+
+  <div class="boosts-container" id="boostsContainer"></div>
+
+  <div class="player-wrapper" id="player">
+    <div class="player-name" id="myName">Ты</div>
+    <div class="player-body-wrap" id="myBodyWrap">
+      <div class="player-head"></div>
+      <div class="player-body"></div>
+      <div class="player-legs"></div>
+    </div>
+  </div>
+
+  <div id="otherPlayers"></div>
+  <div id="eggsContainer"></div>
+</div>
+
+<div class="side-panel" id="sidePanel">
+  <div class="side-panel-header">
+    <h2 id="sidePanelTitle">Раздел</h2>
+    <button class="side-panel-close" id="sidePanelClose">✕</button>
+  </div>
+  <div class="side-panel-body" id="sidePanelBody"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-content">
+    <div class="modal-title">Подтверждение</div>
+    <div class="modal-text" id="modalText">Вы уверены?</div>
+    <div class="modal-buttons">
+      <button class="modal-btn cancel" id="modalCancel">Отмена</button>
+      <button class="modal-btn confirm" id="modalConfirm">Продать</button>
+    </div>
+  </div>
+</div>
+
+<div class="notif-container" id="notifContainer"></div>
+<div class="loading" id="loading"><div class="spinner"></div><div>Подключение...</div></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, get, set, update, onValue, runTransaction, onDisconnect } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDVzCQzP9q_UDKiGNrl85LhdVx2QKcDFho",
+  authDomain: "my-game-9f39c.firebaseapp.com",
+  databaseURL: "https://my-game-9f39c-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "my-game-9f39c",
+  storageBucket: "my-game-9f39c.firebasestorage.app",
+  messagingSenderId: "358276663763",
+  appId: "1:358276663763:web:f04a519d67d088ad1d0726"
+};
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const $ = id => document.getElementById(id);
+
+function fmt(n) {
+  if (n < 0) return "-" + fmt(-n);
+  if (n < 1000) return n.toFixed(n < 10 ? 2 : 1).replace(/\.0+$/, "");
+  const suffixes = ["", "K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc", "Ud", "Dd", "Td", "Qad"];
+  let tier = 0; let val = n;
+  while (val >= 1000 && tier < suffixes.length - 1) { val /= 1000; tier++; }
+  return val.toFixed(val < 10 ? 2 : 1).replace(/\.0+$/, "") + suffixes[tier];
+}
+
+// ======================= ФОРМАТ ВРЕМЕНИ =======================
+function fmtTime(ms) {
+  const totalSec = Math.max(0, Math.ceil(ms / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  
+  if (h > 0) {
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  }
+  if (m > 0) {
+    return s > 0 ? `${m}m ${s}s` : `${m}m`;
+  }
+  return `${s}s`;
+}
+
+function toast(text, cls="") { const el = $("toast"); el.textContent = text; el.className = "toast show " + cls; clearTimeout(toast._t); toast._t = setTimeout(() => el.className = "toast " + cls, 2400); }
+
+// ======================= ЗВУКИ =======================
+const SOUNDS = {
+  legendary: new Audio("Sounds/legendary_spawn.mp3"), 
+  secret: new Audio("Sounds/secret_spawn.mp3"),
+  eternal: new Audio("Sounds/eternal_spawn.mp3"), 
+  divine: new Audio("Sounds/divine_spawn.mp3"),
+  menu: new Audio("Sounds/menu_music.mp3"), 
+  admin: new Audio("Sounds/admin_music.mp3"), 
+  send: new Audio("Sounds/send.mp3")
+};
+SOUNDS.menu.loop = true; SOUNDS.menu.volume = 0.35;
+SOUNDS.admin.loop = true; SOUNDS.admin.volume = 0.5;
+
+let menuStarted = false; 
+let adminMusicOn = false;
+let audioUnlocked = false;
+
+function unlockAudio() {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+  ["legendary", "secret", "eternal", "divine", "send"].forEach(key => {
+    const s = SOUNDS[key];
+    if (!s) return;
+    try {
+      s.volume = 0;
+      const p = s.play();
+      if (p) p.then(() => {
+        s.pause();
+        s.currentTime = 0;
+        s.volume = 1.0;
+      }).catch(() => {});
+    } catch (e) {}
+  });
+}
+
+function tryPlayMenu() { 
+  if (menuStarted) return; 
+  menuStarted = true; 
+  unlockAudio();
+  if (adminMusicOn) SOUNDS.admin.play().catch(()=>{}); 
+  else SOUNDS.menu.play().catch(()=>{}); 
+}
+["click", "keydown", "touchstart"].forEach(ev => window.addEventListener(ev, tryPlayMenu, { once: true }));
+
+function playSpawnSound(rarity) { 
+  const s = SOUNDS[rarity]; if (!s) return; 
+  try { 
+    s.currentTime = 0; 
+    s.volume = 1.0; 
+    s.play().catch(()=>{}); 
+  } catch(e) {} 
+}
+
+// ======================= АДМИН =======================
+let adminState = { luckBoost: 1, sizeBoost: 1, incomeBoost: 1 };
+
+onValue(ref(db, "egg_global/admin"), (snap) => {
+  const d = snap.val() || {};
+  adminState.luckBoost = Number(d.luckBoost) || 1;
+  adminState.sizeBoost = Number(d.sizeBoost) || 1;
+  adminState.incomeBoost = Number(d.incomeBoost) || 1;
+  updateHud();
+  renderBoosts();
+  
+  const wantAdmin = !!d.musicPlaying;
+  if (wantAdmin && !adminMusicOn) {
+    adminMusicOn = true;
+    SOUNDS.menu.pause();
+    SOUNDS.admin.play().catch(()=>{});
+  } else if (!wantAdmin && adminMusicOn) {
+    adminMusicOn = false;
+    SOUNDS.admin.pause();
+    SOUNDS.admin.currentTime = 0;
+    SOUNDS.menu.play().catch(()=>{});
+  }
+});
+
+// ======================= УВЕДОМЛЕНИЯ =======================
+onValue(ref(db, "egg_global/admin/notification"), (snap) => {
+  const d = snap.val(); 
+  if (!d || !d.text) return;
+  try { SOUNDS.send.currentTime = 0; SOUNDS.send.volume = 1.0; SOUNDS.send.play().catch(()=>{}); } catch(e) {}
+  const color = d.color || "yellow";
+  const cls = ["legendary","secret","eternal","divine"].includes(color) ? color : "";
+  const el = document.createElement("div"); 
+  el.className = "notif " + cls;
+  el.innerHTML = `<span class="notif-icon">⚡</span><div class="notif-text"><b>Drisnita☑️:</b> ${d.text}</div>`;
+  $("notifContainer").appendChild(el);
+  setTimeout(() => { el.style.opacity = "0"; el.style.transform = "translateY(-20px)"; setTimeout(() => el.remove(), 400); }, 4000);
+});
+
+// ======================= МИРЫ =======================
+const WORLDS = {
+  1: { name: "🌳 Лес", bgClass: "world-1", incomeMult: 1, pets: { legendary: [{ name: "Ember Cat", icon: "🐈" }, { name: "Golden Retriever", icon: "🐕" }], secret: [{ name: "Neon Fox", icon: "🦊" }, { name: "Star Dog", icon: "🐕" }], eternal: [{ name: "Gear Dragon", icon: "🐉" }, { name: "Clockwork Owl", icon: "🦉" }], divine: [{ name: "World Burner", icon: "🔥" }, { name: "Celestial Wolf", icon: "🐺" }] }},
+  2: { name: "❄️ Зимнее время", bgClass: "world-2", incomeMult: 2.5, cost: 15000000, pets: { legendary: [{ name: "Snow Bunny", icon: "🐇" }, { name: "Arctic Fox", icon: "🦊" }], secret: [{ name: "Frost Dragon", icon: "🐉" }, { name: "Ice Wolf", icon: "🐺" }], eternal: [{ name: "Crystal Golem", icon: "💎" }, { name: "Blizzard Owl", icon: "🦉" }], divine: [{ name: "Absolute Zero", icon: "❄️" }, { name: "Aurora Spirit", icon: "🌌" }] }}
+};
+
+const EGGS_BASE = {
+  legendary: { chance: 50, baseTime: 30 * 1000, cls: "legendary", minSize: 0.25, maxSize: 2.5, income: 50 },
+  secret:    { chance: 29, baseTime: 45 * 1000, cls: "secret", minSize: 0.25, maxSize: 2.5, income: 150 },
+  eternal:   { chance: 15, baseTime: 3 * 60 * 1000, cls: "eternal", minSize: 0.50, maxSize: 2.0, income: 1250 },
+  divine:    { chance: 6,  baseTime: 15 * 60 * 1000, cls: "divine", minSize: 0.25, maxSize: 1.2, income: 14500 }
+};
+
+// ======================= ИГРОК =======================
+let PLAYER_ID = localStorage.getItem("egg_playerId");
+if (!PLAYER_ID) { PLAYER_ID = "p_" + Math.random().toString(36).slice(2, 12); localStorage.setItem("egg_playerId", PLAYER_ID); }
+let MY_NICK = localStorage.getItem("egg_nick") || ("Игрок_" + PLAYER_ID.slice(2, 6));
+localStorage.setItem("egg_nick", MY_NICK);
+$("myName").textContent = MY_NICK;
+
+const playerRef = ref(db, "egg_players/" + PLAYER_ID);
+let state = { coins: 0, pendingEggs: [], inventory: [], aviary: [], currentWorld: 1, lastSpawnCycle: -1, lastSeenAt: Date.now(), aviaryUpgradeLevel: 0, aviarySlots: 7 };
+let activePanel = null;
+
+let playerPos = { x: 200, y: 200 };
+const playerSpeed = 2.5;
+const keys = {};
+const playerEl = $("player");
+const bodyWrap = $("myBodyWrap");
+
+window.addEventListener("keydown", e => { 
+  keys[e.key.toLowerCase()] = true; 
+  if (e.code === "KeyE") {
+    findNearestEggAndCollect();
+  }
+});
+window.addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
+
+let lastPosSend = 0;
+function updatePlayerPos() {
+  let dx = 0, dy = 0;
+  if (keys["w"] || keys["arrowup"] || keys["ц"]) dy -= playerSpeed;
+  if (keys["s"] || keys["arrowdown"] || keys["ы"]) dy += playerSpeed;
+  if (keys["a"] || keys["arrowleft"] || keys["ф"]) dx -= playerSpeed;
+  if (keys["d"] || keys["arrowright"] || keys["в"]) dx += playerSpeed;
+
+  if (dx !== 0 || dy !== 0) {
+    playerPos.x += dx; playerPos.y += dy;
+    const w = window.innerWidth - 64; const h = window.innerHeight;
+    playerPos.x = Math.max(40, Math.min(w - 80, playerPos.x));
+    playerPos.y = Math.max(80, Math.min(h - 80, playerPos.y));
+    playerEl.style.left = playerPos.x + "px"; playerEl.style.top = playerPos.y + "px";
+    if (dx < 0) bodyWrap.style.transform = "scaleX(-1)";
+    else if (dx > 0) bodyWrap.style.transform = "scaleX(1)";
+    
+    const now = Date.now();
+    if (now - lastPosSend > 100) {
+      lastPosSend = now;
+      update(ref(db, "egg_players/" + PLAYER_ID), { x: playerPos.x, y: playerPos.y, world: state.currentWorld, lastSeen: Date.now() });
+    }
+  }
+
+  updateNearestEgg();
+  requestAnimationFrame(updatePlayerPos);
+}
+onDisconnect(ref(db, "egg_players/" + PLAYER_ID)).update({ world: 0 });
+
+onValue(ref(db, "egg_players"), (snap) => {
+  const players = snap.val() || {};
+  const container = $("otherPlayers");
+  container.innerHTML = "";
+  for (const id in players) {
+    if (id === PLAYER_ID) continue;
+    const p = players[id];
+    if (!p || p.world !== state.currentWorld || Date.now() - p.lastSeen > 10000) continue;
+    const el = document.createElement("div");
+    el.className = "player-wrapper";
+    el.style.left = p.x + "px"; el.style.top = p.y + "px";
+    el.innerHTML = `<div class="player-name">${p.nick || "Игрок"}</div><div class="player-body-wrap"><div class="player-head" style="background:#a5f3fc;"></div><div class="player-body" style="background:#8b5cf6;"></div><div class="player-legs"></div></div>`;
+    container.appendChild(el);
+  }
+});
+
+// ======================= ВРЕМЯ =======================
+const worldTimeRef = ref(db, "egg_global/worldTime");
+let cycleStartGlobal = 0;
+onValue(worldTimeRef, (snap) => {
+  let t = snap.val();
+  if (!t) { t = Date.now(); set(worldTimeRef, t); }
+  cycleStartGlobal = t;
+});
+function getPhaseData() {
+  const DAY_MS = 60 * 1000; const NIGHT_MS = 10 * 1000; const CYCLE_MS = DAY_MS + NIGHT_MS;
+  if (!cycleStartGlobal) return { phase: "night", msLeft: NIGHT_MS, total: NIGHT_MS, cycleNum: 0 };
+  const inCycle = ((Date.now() - cycleStartGlobal) % CYCLE_MS + CYCLE_MS) % CYCLE_MS;
+  const cycleNum = Math.floor((Date.now() - cycleStartGlobal) / CYCLE_MS);
+  if (inCycle < NIGHT_MS) return { phase: "night", msLeft: NIGHT_MS - inCycle, total: NIGHT_MS, cycleNum };
+  return { phase: "day", msLeft: CYCLE_MS - inCycle, total: DAY_MS, cycleNum };
+}
+
+// ======================= ЯЙЦА =======================
+const eggsRef = ref(db, "egg_global/eggs");
+let allEggs = {};
+let lastEggIds = new Set();
+let isSpawning = false;
+
+onValue(eggsRef, (snap) => {
+  const newEggs = snap.val() || {};
+  
+  for (const id in newEggs) {
+    if (!lastEggIds.has(id)) {
+      const egg = newEggs[id];
+      if (egg && egg.world === state.currentWorld) {
+        playSpawnSound(egg.rarity);
+      }
+    }
+  }
+  
+  lastEggIds = new Set(Object.keys(newEggs));
+  allEggs = newEggs;
+  renderAllEggs();
+});
+
+function rollEggRarity() {
+  const luck = adminState.luckBoost || 1;
+  const weighted = {}; let total = 0;
+  for (const key in EGGS_BASE) { let w = EGGS_BASE[key].chance; if (key !== "legendary") w *= luck; weighted[key] = w; total += w; }
+  const r = Math.random() * total; let acc = 0;
+  for (const key in weighted) { acc += weighted[key]; if (r < acc) return key; }
+  return "legendary";
+}
+function randomSize(r) { const cfg = EGGS_BASE[r]; let s = cfg.minSize + Math.random() * (cfg.maxSize - cfg.minSize); if (r === "divine") s = cfg.minSize + Math.pow(Math.random(), 2) * (cfg.maxSize - cfg.minSize); s *= (adminState.sizeBoost || 1); return Number(s.toFixed(2)); }
+
+function renderAllEggs() {
+  const container = $("eggsContainer");
+  container.innerHTML = "";
+  
+  for (const id in allEggs) {
+    const egg = allEggs[id];
+    if (egg.world !== state.currentWorld) continue;
+    
+    const eggEl = document.createElement("div");
+    eggEl.className = "world-egg " + EGGS_BASE[egg.rarity].cls;
+    eggEl.dataset.id = id;
+    eggEl.style.left = egg.x + "px"; 
+    eggEl.style.top = egg.y + "px";
+    
+    const scale = Math.max(0.01, Math.min(100, Number(egg.size) || 1));
+    eggEl.style.transform = `scale(${scale})`;
+    
+    eggEl.innerHTML = `<div class="world-egg-shape"></div><div class="interact-hint">Нажми E</div>`;
+    eggEl.onclick = (e) => tryCollectEgg(id, egg, e);
+    container.appendChild(eggEl);
+  }
+  updateNearestEgg();
+}
+
+function updateNearestEgg() {
+  document.querySelectorAll(".world-egg").forEach(el => {
+    const left = parseFloat(el.style.left) || 0;
+    const top = parseFloat(el.style.top) || 0;
+    const dist = Math.hypot(playerPos.x - left, playerPos.y - top);
+    if (dist < 120) el.classList.add("near");
+    else el.classList.remove("near");
+  });
+}
+
+function findNearestEggAndCollect() {
+  let nearest = null;
+  let minDist = 120;
+  
+  for (const id in allEggs) {
+    const egg = allEggs[id];
+    if (egg.world !== state.currentWorld) continue;
+    const dist = Math.hypot(playerPos.x - egg.x, playerPos.y - egg.y);
+    if (dist < minDist) {
+      minDist = dist;
+      nearest = { id, egg };
+    }
+  }
+  
+  if (nearest) {
+    tryCollectEgg(nearest.id, nearest.egg, null);
+  } else {
+    toast("Рядом нет яиц", "divine");
+  }
+}
+
+async function tryCollectEgg(eggId, egg, e) {
+  const phase = getPhaseData();
+  if (phase.phase !== "day") { toast("Ночью яйца не забрать", "divine"); return; }
+  
+  const dist = Math.hypot(playerPos.x - egg.x, playerPos.y - egg.y);
+  if (dist > 120) { toast("Подойди ближе к яйцу!", "divine"); return; }
+  
+  const eggSnapshot = { rarity: egg.rarity, size: egg.size, petName: egg.petName };
+  const eggRef = ref(db, "egg_global/eggs/" + eggId);
+  
+  let success = false;
+  await runTransaction(eggRef, (data) => {
+    if (data) { success = true; return null; }
+    return data;
+  });
+  
+  if (success) {
+    const newEggId = "egg_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
+    state.pendingEggs.push({ 
+      id: newEggId, rarity: eggSnapshot.rarity, size: eggSnapshot.size, 
+      hatching: false, hatchStartAt: 0, hatchEndAt: 0, world: state.currentWorld,
+      presetPetName: eggSnapshot.petName
+    });
+    toast(`Ты забрал ${EGGS_BASE[eggSnapshot.rarity].cls.toUpperCase()} яйцо!`, eggSnapshot.rarity);
+    if (e) spawnFloat("🥚", e.clientX, e.clientY, "#fff");
+    renderAllPanels(); updateHud(); saveState();
+  } else {
+    toast("Увы, яйцо уже забрали!", "divine");
+  }
+}
+
+setInterval(updateNearestEgg, 100);
+
+// ======================= БУСТЫ =======================
+function renderBoosts() {
+  let bHtml = "";
+  if (adminState.luckBoost > 1) bHtml += `<div class="boost-badge">🍀 Удача x${adminState.luckBoost}</div>`;
+  if (adminState.sizeBoost > 1) bHtml += `<div class="boost-badge orange">📏 Размер x${adminState.sizeBoost}</div>`;
+  if (adminState.incomeBoost > 1) bHtml += `<div class="boost-badge blue">💰 Доход x${adminState.incomeBoost}</div>`;
+  const el = $("boostsContainer");
+  if (el) el.innerHTML = bHtml;
+}
+
+// ======================= ЦИКЛ =======================
+function tick() {
+  const p = getPhaseData();
+  const isDay = p.phase === "day";
+  
+  $("phaseLabel").textContent = isDay ? "День" : "Ночь";
+  $("timerHud").textContent = fmtTime(p.msLeft);
+  $("phaseHud").className = "hud-card phase " + p.phase;
+  $("timerBar").style.width = Math.max(0, Math.min(100, (p.msLeft / p.total) * 100)) + "%";
+  $("timerBar").className = "timer-bar " + p.phase;
+
+  if (isDay && Object.keys(allEggs).length === 0 && state.lastSpawnCycle < p.cycleNum && !isSpawning) {
+    isSpawning = true;
+    const rarity = rollEggRarity();
+    const w = window.innerWidth - 64; const h = window.innerHeight;
+    const eggId = "e_" + Date.now();
+    
+    update(eggsRef, {
+      [eggId]: { 
+        id: eggId,
+        rarity, 
+        size: randomSize(rarity), 
+        world: state.currentWorld, 
+        x: 100 + Math.random() * (w - 300), 
+        y: 100 + Math.random() * (h - 300) 
+      }
+    }).then(() => {
+      state.lastSpawnCycle = p.cycleNum;
+      saveState();
+      isSpawning = false;
+    }).catch(() => { isSpawning = false; });
+  }
+  else if (!isDay && Object.keys(allEggs).length > 0) {
+    set(eggsRef, null);
+  }
+
+  let hatched = false;
+  for (let i = state.pendingEggs.length - 1; i >= 0; i--) {
+    if (state.pendingEggs[i].hatching && Date.now() >= state.pendingEggs[i].hatchEndAt) {
+      const egg = state.pendingEggs[i];
+      let pet;
+      if (egg.presetPetName) {
+        pet = { name: egg.presetPetName, icon: "✨" };
+      } else {
+        const pool = WORLDS[egg.world || 1].pets[egg.rarity];
+        pet = pool[Math.floor(Math.random() * pool.length)];
+      }
+      state.inventory.push({ 
+        id: "pet_"+Date.now()+"_"+i, 
+        rarity: egg.rarity, 
+        size: egg.size, 
+        name: pet.name, 
+        icon: pet.icon, 
+        world: egg.world || 1 
+      });
+      state.pendingEggs.splice(i, 1); hatched = true;
+    }
+  }
+  if (hatched) { toast("Яйцо вылупилось!", "secret"); renderAllPanels(); updateHud(); saveState(); }
+
+  // Обновляем прогресс-бары вылупления
+  if (activePanel === "eggs" && state.pendingEggs.some(e => e.hatching)) {
+    const body = $("sidePanelBody");
+    const now = Date.now();
+    state.pendingEggs.forEach(e => {
+      if (!e.hatching) return;
+      const left = Math.max(0, e.hatchEndAt - now);
+      const dur = Math.max(1, e.hatchEndAt - e.hatchStartAt);
+      const bar = body.querySelector(`.egg-card-progress-bar[data-id="${e.id}"]`);
+      if (bar) bar.style.width = Math.min(100, ((dur - left) / dur) * 100) + "%";
+      const txt = body.querySelector(`.egg-card-progress-text[data-id="${e.id}"]`);
+      if (txt) txt.textContent = `Вылупление... ${fmtTime(left)}`;
+    });
+  }
+
+  renderBoosts();
+  requestAnimationFrame(tick);
+}
+
+setInterval(renderBoosts, 1000);
+
+$("worldBtn").onclick = () => { openPanel("worlds"); };
+function applyWorld() {
+  const world = WORLDS[state.currentWorld];
+  $("worldBg").className = "world-container " + world.bgClass;
+  $("worldLabel").textContent = world.name;
+  if (state.currentWorld === 1) { $("bgTrees").style.display = "block"; $("bgSnow").style.display = "none"; }
+  else { $("bgTrees").style.display = "none"; $("bgSnow").style.display = "block"; }
+  renderAllEggs();
+}
+function switchWorld(targetWorld) {
+  if (state.currentWorld === targetWorld) { toast("Ты уже в этом мире", "secret"); return; }
+  if (targetWorld === 2 && state.coins < WORLDS[2].cost) { toast(`Нужно ${fmt(WORLDS[2].cost)} 🪙!`, "divine"); return; }
+  state.currentWorld = targetWorld;
+  applyWorld();
+  update(ref(db, "egg_players/" + PLAYER_ID), { world: targetWorld });
+  toast(`Переход в мир: ${WORLDS[targetWorld].name}`, "legendary");
+  renderAllPanels(); saveState(); closePanel();
+}
+
+// ======================= ПАНЕЛИ =======================
+const PANELS = { worlds: { title: "🌍 Миры", render: renderWorldsPanel }, eggs: { title: "🥚 Яйца", render: renderEggsPanel }, inventory: { title: "🎒 Инвентарь", render: renderInventoryPanel }, aviary: { title: "🏡 Вольер", render: renderAviaryPanel } };
+function openPanel(name) { activePanel = name; document.querySelectorAll(".rail-btn").forEach(b => b.classList.toggle("active", b.dataset.view === name)); $("sidePanel").classList.add("open"); $("sidePanelTitle").textContent = PANELS[name].title; PANELS[name].render(); }
+function closePanel() { activePanel = null; $("sidePanel").classList.remove("open"); document.querySelectorAll(".rail-btn").forEach(b => b.classList.toggle("active", b.dataset.view === "home")); }
+document.querySelectorAll(".rail-btn").forEach(btn => { btn.onclick = () => { const v = btn.dataset.view; if (v === "home" || activePanel === v) closePanel(); else openPanel(v); }; });
+$("sidePanelClose").onclick = closePanel;
+
+function renderWorldsPanel() {
+  const body = $("sidePanelBody");
+  body.innerHTML = `
+    <div class="world-select-card ${state.currentWorld === 1 ? "active" : ""}" data-world="1"><div class="preview">🌳</div><div class="info"><div class="title">Лес</div><div class="desc">Спокойный лес.</div><div class="bonus">Доход x1</div></div></div>
+    <div class="world-select-card ${state.currentWorld === 2 ? "active" : ""}" data-world="2"><div class="preview">❄️</div><div class="info"><div class="title">Зимнее время</div><div class="desc">Холодно, но выгодно.</div><div class="bonus">Доход x2.5 · Вход: ${fmt(WORLDS[2].cost)} 🪙</div></div></div>
+  `;
+  body.querySelectorAll(".world-select-card").forEach(card => card.onclick = () => switchWorld(Number(card.dataset.world)));
+}
+
+function renderEggsPanel() {
+  const body = $("sidePanelBody");
+  if (!state.pendingEggs.length) { body.innerHTML = `<div class="empty-state"><div class="big">🥚</div>Пусто.</div>`; return; }
+  body.innerHTML = state.pendingEggs.map(egg => {
+    const data = EGGS_BASE[egg.rarity]; let bottom = "";
+    if (egg.hatching) {
+      const left = Math.max(0, egg.hatchEndAt - Date.now());
+      const dur = Math.max(1, egg.hatchEndAt - egg.hatchStartAt);
+      const pct = Math.min(100, ((dur - left) / dur) * 100);
+      bottom = `<div class="egg-card-progress"><div class="egg-card-progress-bar" data-id="${egg.id}" style="width:${pct}%"></div></div><div class="egg-card-progress-text" data-id="${egg.id}">Вылупление... ${fmtTime(left)}</div>`;
+    } else {
+      bottom = `<button class="egg-card-btn" data-hatch="${egg.id}">Вылупить</button>`;
+    }
+    return `<div class="egg-card ${data.cls}"><div class="egg-card-top"><div class="egg-card-preview"><div class="world-egg-shape ${data.cls}"></div></div><div class="egg-card-info"><div class="egg-card-name">${data.cls.toUpperCase()}</div></div></div>${bottom}</div>`;
+  }).join("");
+  body.querySelectorAll("button[data-hatch]").forEach(btn => btn.onclick = () => {
+    const egg = state.pendingEggs.find(e => e.id === btn.dataset.hatch);
+    if (egg && !egg.hatching) { egg.hatching = true; egg.hatchStartAt = Date.now(); egg.hatchEndAt = egg.hatchStartAt + Math.round(EGGS_BASE[egg.rarity].baseTime * Math.min(egg.size, 5)); renderEggsPanel(); saveState(); }
+  });
+}
+
+function petIncome(p) { const world = WORLDS[p.world || 1]; return EGGS_BASE[p.rarity].income * p.size * (adminState.incomeBoost || 1) * world.incomeMult; }
+function petSellPrice(pet) { return Math.round(petIncome(pet) * 100); }
+
+function renderInventoryPanel() {
+  const body = $("sidePanelBody");
+  const totalPrice = state.inventory.reduce((s, p) => s + petSellPrice(p), 0);
+  let html = "";
+  if (state.inventory.length) html = `<button class="sell-all-btn" id="sellAllBtn">💰 Продать всё (${fmt(totalPrice)})</button>`;
+  if (!state.inventory.length) { body.innerHTML = html + `<div class="empty-state"><div class="big">🎒</div>Пусто.</div>`; return; }
+  html += state.inventory.map(p => {
+    const data = EGGS_BASE[p.rarity]; const price = petSellPrice(p);
+    return `<div class="pet-card ${data.cls}"><div class="pet-card-icon">${p.icon || "🥚"}</div><div class="pet-card-info"><div class="pet-card-name">${p.name || data.name}</div><div class="pet-card-income">+${fmt(petIncome(p))}/сек</div><div class="pet-card-price">💰 ${fmt(price)}</div></div><div class="pet-card-actions"><button class="pet-card-btn sell" data-sell="${p.id}">Продать</button><button class="pet-card-btn" data-aviary="${p.id}">В вольер</button></div></div>`;
+  }).join("");
+  body.innerHTML = html;
+  $("sellAllBtn").onclick = () => { showConfirm(`Продать <b>всех питомцев</b> за <b>${fmt(totalPrice)} 🪙</b>?`, () => { state.coins += totalPrice; state.inventory = []; toast(`Продано за ${fmt(totalPrice)} 🪙`, "legendary"); renderAllPanels(); updateHud(); saveState(); }); };
+  body.querySelectorAll("button[data-aviary]").forEach(btn => btn.onclick = () => { const idx = state.inventory.findIndex(p => p.id === btn.dataset.aviary); if (idx !== -1) { if (state.aviary.length >= state.aviarySlots) { toast(`Вольер заполнен!`, "divine"); return; } state.aviary.push(state.inventory.splice(idx, 1)[0]); toast("В вольер!", "legendary"); renderAllPanels(); updateHud(); saveState(); } });
+  body.querySelectorAll("button[data-sell]").forEach(btn => btn.onclick = () => { const idx = state.inventory.findIndex(p => p.id === btn.dataset.sell); if (idx === -1) return; const pet = state.inventory[idx]; const price = petSellPrice(pet); showConfirm(`Продать <b>${pet.name}</b> за <b>${fmt(price)} 🪙</b>?`, () => { state.inventory.splice(idx, 1); state.coins += price; toast(`Продано за ${fmt(price)} 🪙`, pet.rarity); renderAllPanels(); updateHud(); saveState(); }); });
+}
+
+function renderAviaryPanel() {
+  const body = $("sidePanelBody");
+  const total = state.aviary.reduce((s, p) => s + petIncome(p), 0);
+  const header = `<div class="income-summary">💰 ${fmt(total)}/сек</div><div class="slots-summary">Занято: <b>${state.aviary.length} / ${state.aviarySlots}</b></div>`;
+  let upgradeHtml = "";
+  if (state.aviarySlots < 16) { const cost = Math.round(100 * Math.pow(4.5, state.aviaryUpgradeLevel)); upgradeHtml = `<div class="upgrade-box"><div class="upgrade-title">⚡ Прокачка вольера</div><div class="upgrade-info">Слоты: <b>${state.aviarySlots}</b> → <b>${state.aviarySlots + 1}</b></div><button class="upgrade-btn" id="aviaryUpgradeBtn" ${state.coins >= cost ? "" : "disabled"}>Прокачать (${fmt(cost)} 🪙)</button></div>`; } else { upgradeHtml = `<div class="upgrade-box maxed"><div class="upgrade-title">🏆 Максимум</div><div class="upgrade-info">16 / 16</div></div>`; }
+  if (!state.aviary.length) { body.innerHTML = header + upgradeHtml + `<div class="empty-state"><div class="big">🏡</div>Пусто.</div>`; bindAviary(); return; }
+  const petsHtml = state.aviary.map(p => {
+    const data = EGGS_BASE[p.rarity]; const price = petSellPrice(p);
+    return `<div class="pet-card ${data.cls}"><div class="pet-card-icon">${p.icon || "🥚"}</div><div class="pet-card-info"><div class="pet-card-name">${p.name}</div><div class="pet-card-income">+${fmt(petIncome(p))}/сек</div></div><div class="pet-card-actions"><button class="pet-card-btn sell" data-sell-aviary="${p.id}">Продать</button></div></div>`;
+  }).join("");
+  body.innerHTML = header + upgradeHtml + petsHtml;
+  bindAviary();
+  body.querySelectorAll("button[data-sell-aviary]").forEach(btn => btn.onclick = () => { const idx = state.aviary.findIndex(p => p.id === btn.dataset.sellAviary); if (idx === -1) return; const pet = state.aviary[idx]; const price = petSellPrice(pet); showConfirm(`Продать <b>${pet.name}</b> за <b>${fmt(price)} 🪙</b>?`, () => { state.aviary.splice(idx, 1); state.coins += price; toast(`Продано за ${fmt(price)} 🪙`, pet.rarity); renderAllPanels(); updateHud(); saveState(); }); });
+}
+function bindAviary() { const btn = document.getElementById("aviaryUpgradeBtn"); if (!btn) return; btn.onclick = () => { const cost = Math.round(100 * Math.pow(4.5, state.aviaryUpgradeLevel)); if (state.coins < cost) return; state.coins -= cost; state.aviaryUpgradeLevel++; state.aviarySlots++; toast(`Вольер прокачан!`, "divine"); updateHud(); renderAllPanels(); saveState(); }; }
+
+function renderAllPanels() {
+  $("eggsBadge").style.display = state.pendingEggs.length ? "flex" : "none"; $("eggsBadge").textContent = state.pendingEggs.length;
+  $("invBadge").style.display = state.inventory.length ? "flex" : "none"; $("invBadge").textContent = state.inventory.length;
+  if (activePanel === "worlds") renderWorldsPanel();
+  if (activePanel === "eggs") renderEggsPanel();
+  if (activePanel === "inventory") renderInventoryPanel();
+  if (activePanel === "aviary") renderAviaryPanel();
+}
+function updateHud() { $("coinsHud").textContent = fmt(state.coins); $("incomeHud").textContent = fmt(state.aviary.reduce((s, p) => s + petIncome(p), 0)); }
+function spawnFloat(text, x, y, color="#fbbf24") { const el = document.createElement("div"); el.className = "float-num"; el.textContent = text; el.style.left = (x - 20) + "px"; el.style.top = y + "px"; el.style.color = color; el.style.textShadow = `0 0 20px ${color}`; document.body.appendChild(el); setTimeout(() => el.remove(), 1200); }
+function showConfirm(text, onConfirm) { $("modalText").innerHTML = text; $("modalOverlay").classList.add("show"); const btnConfirm = $("modalConfirm"), btnCancel = $("modalCancel"); const close = () => $("modalOverlay").classList.remove("show"); btnCancel.onclick = close; btnConfirm.onclick = () => { close(); onConfirm(); }; }
+
+// ======================= СОХРАНЕНИЕ =======================
+let saveTimer = null;
+function saveState() {
+  const data = { nick: MY_NICK, x: playerPos.x, y: playerPos.y, world: state.currentWorld, coins: state.coins, pendingEggs: state.pendingEggs, inventory: state.inventory, aviary: state.aviary, lastSpawnCycle: state.lastSpawnCycle, lastSeen: Date.now(), aviaryUpgradeLevel: state.aviaryUpgradeLevel, aviarySlots: state.aviarySlots };
+  localStorage.setItem("egg_state", JSON.stringify(data));
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => update(playerRef, data).catch(()=>{}), 400);
+}
+
+async function loadState() {
+  try {
+    const snap = await get(playerRef);
+    if (snap.exists()) {
+      const d = snap.val();
+      state.coins = Number(d.coins) || 0;
+      state.pendingEggs = Array.isArray(d.pendingEggs) ? d.pendingEggs : [];
+      state.inventory = Array.isArray(d.inventory) ? d.inventory : [];
+      state.aviary = Array.isArray(d.aviary) ? d.aviary : [];
+      state.currentWorld = Number(d.world) || 1;
+      state.lastSpawnCycle = Number(d.lastSpawnCycle) || -1;
+      state.aviaryUpgradeLevel = Number(d.aviaryUpgradeLevel) || 0;
+      state.aviarySlots = Number(d.aviarySlots) || 7;
+      if (d.x) playerPos.x = d.x; if (d.y) playerPos.y = d.y;
+      playerEl.style.left = playerPos.x + "px"; playerEl.style.top = playerPos.y + "px";
+    }
+  } catch (e) {}
+  updateHud(); renderAllPanels(); renderBoosts();
+}
+
+setInterval(() => { if (!state.aviary.length) return; const inc = state.aviary.reduce((s, p) => s + petIncome(p), 0); if (inc > 0) { state.coins += inc; updateHud(); saveState(); } }, 1000);
+
+async function init() {
+  await loadState();
+  applyWorld();
+  updatePlayerPos();
+  $("loading").classList.add("hide");
+  setTimeout(() => $("loading").style.display = "none", 500);
+  requestAnimationFrame(tick);
+}
+init();
+</script>
+</body>
+</html>
